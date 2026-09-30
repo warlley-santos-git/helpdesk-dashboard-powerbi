@@ -1,0 +1,82 @@
+// =============================================================================
+// Medidas DAX do dashboard de Help Desk
+// Cole cada medida em "Nova medida" na tabela fChamados (ou numa tabela _Medidas).
+//
+// Modelo em estrela (Star Schema):
+//   fChamados (fato)  ──id_tecnico──>  dTecnicos
+//   fChamados (fato)  ──categoria───>  dCategorias
+//   fChamados (fato)  ──data────────>  dCalendario   (data = DATE(data_abertura))
+// =============================================================================
+
+
+// ---------- Tabela calendário (Modelagem > Nova tabela) ----------
+dCalendario =
+ADDCOLUMNS (
+    CALENDAR ( DATE ( YEAR ( MIN ( fChamados[data_abertura] ) ), 1, 1 ),
+               DATE ( YEAR ( MAX ( fChamados[data_abertura] ) ), 12, 31 ) ),
+    "Ano", YEAR ( [Date] ),
+    "MesNum", MONTH ( [Date] ),
+    "Mes", FORMAT ( [Date], "mmm/yy" ),
+    "DiaSemana", FORMAT ( [Date], "ddd" ),
+    "DiaSemanaNum", WEEKDAY ( [Date], 2 )
+)
+
+
+// ---------- Coluna calculada em fChamados ----------
+// Liga a fato à dCalendario (relacionamento data -> dCalendario[Date])
+data = DATE ( YEAR ( fChamados[data_abertura] ), MONTH ( fChamados[data_abertura] ), DAY ( fChamados[data_abertura] ) )
+
+// Chamado resolvido dentro do SLA da categoria (1 = sim, 0 = não, vazio = aberto)
+dentro_sla =
+IF (
+    ISBLANK ( fChamados[tempo_resolucao_h] ),
+    BLANK (),
+    IF ( fChamados[tempo_resolucao_h] <= RELATED ( dCategorias[sla_horas] ), 1, 0 )
+)
+
+
+// ---------- Volume ----------
+Total Chamados = COUNTROWS ( fChamados )
+
+Chamados Fechados = CALCULATE ( [Total Chamados], fChamados[status] = "Fechado" )
+
+Chamados Abertos = CALCULATE ( [Total Chamados], fChamados[status] = "Aberto" )
+
+Chamados Mês Anterior = CALCULATE ( [Total Chamados], DATEADD ( dCalendario[Date], -1, MONTH ) )
+
+Variação vs Mês Anterior % =
+DIVIDE ( [Total Chamados] - [Chamados Mês Anterior], [Chamados Mês Anterior] )
+
+
+// ---------- SLA ----------
+Chamados no SLA = CALCULATE ( [Total Chamados], fChamados[dentro_sla] = 1 )
+
+% no SLA = DIVIDE ( [Chamados no SLA], [Chamados Fechados] )
+
+Chamados Fora do SLA = [Chamados Fechados] - [Chamados no SLA]
+
+Meta SLA = 0.90
+
+Status SLA =
+IF ( [% no SLA] >= [Meta SLA], "Dentro da meta", "Abaixo da meta" )
+
+
+// ---------- Tempo ----------
+Tempo Médio Resolução (h) = AVERAGE ( fChamados[tempo_resolucao_h] )
+
+Tempo Mediano Resolução (h) = MEDIAN ( fChamados[tempo_resolucao_h] )
+
+
+// ---------- Qualidade ----------
+Taxa de Reabertura % =
+DIVIDE ( CALCULATE ( [Chamados Fechados], fChamados[reaberto] = TRUE () ), [Chamados Fechados] )
+
+Satisfação Média = AVERAGE ( fChamados[nota_satisfacao] )
+
+Taxa de Resposta Pesquisa % =
+DIVIDE ( COUNT ( fChamados[nota_satisfacao] ), [Chamados Fechados] )
+
+
+// ---------- Ranking ----------
+Ranking Categoria Fora do SLA =
+RANKX ( ALL ( dCategorias[categoria] ), [Chamados Fora do SLA], , DESC, DENSE )
