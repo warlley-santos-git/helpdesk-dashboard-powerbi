@@ -1,6 +1,7 @@
 // =============================================================================
 // Medidas DAX do dashboard de Help Desk
 // Cole cada medida em "Nova medida" na tabela fChamados (ou numa tabela _Medidas).
+// Atalho: medidas-todas-de-uma-vez.dax cria todas pela Exibição de consulta DAX.
 //
 // Modelo em estrela (Star Schema):
 //   fChamados (fato)  ──id_tecnico──>  dTecnicos
@@ -17,6 +18,7 @@ ADDCOLUMNS (
     "Ano", YEAR ( [Date] ),
     "MesNum", MONTH ( [Date] ),
     "Mes", FORMAT ( [Date], "mmm/yy" ),
+    "AnoMes", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),   // use em "Classificar por coluna" para ordenar "Mes"
     "DiaSemana", FORMAT ( [Date], "ddd" ),
     "DiaSemanaNum", WEEKDAY ( [Date], 2 )
 )

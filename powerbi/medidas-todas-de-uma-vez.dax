@@ -1,0 +1,72 @@
+// =============================================================================
+// Cria TODAS as medidas de uma vez pela "Exibição de consulta DAX" do Power BI.
+//
+// Como usar:
+//   1. Antes: carregue as tabelas, crie dCalendario, as colunas "data" e
+//      "dentro_sla" e os relacionamentos (ver medidas.dax e o README).
+//   2. No Power BI Desktop, abra a Exibição de consulta DAX (ícone na barra
+//      lateral esquerda).
+//   3. Cole este arquivo inteiro e clique em Executar para conferir o resultado.
+//   4. Clique em "Atualizar modelo com alterações" para gravar as medidas.
+// =============================================================================
+
+DEFINE
+    // ---------- Volume ----------
+    MEASURE fChamados[Total Chamados] = COUNTROWS ( fChamados )
+
+    MEASURE fChamados[Chamados Fechados] =
+        CALCULATE ( [Total Chamados], fChamados[status] = "Fechado" )
+
+    MEASURE fChamados[Chamados Abertos] =
+        CALCULATE ( [Total Chamados], fChamados[status] = "Aberto" )
+
+    MEASURE fChamados[Chamados Mês Anterior] =
+        CALCULATE ( [Total Chamados], DATEADD ( dCalendario[Date], -1, MONTH ) )
+
+    MEASURE fChamados[Variação vs Mês Anterior %] =
+        DIVIDE ( [Total Chamados] - [Chamados Mês Anterior], [Chamados Mês Anterior] )
+
+    // ---------- SLA ----------
+    MEASURE fChamados[Chamados no SLA] =
+        CALCULATE ( [Total Chamados], fChamados[dentro_sla] = 1 )
+
+    MEASURE fChamados[% no SLA] = DIVIDE ( [Chamados no SLA], [Chamados Fechados] )
+
+    MEASURE fChamados[Chamados Fora do SLA] = [Chamados Fechados] - [Chamados no SLA]
+
+    MEASURE fChamados[Meta SLA] = 0.90
+
+    MEASURE fChamados[Status SLA] =
+        IF ( [% no SLA] >= [Meta SLA], "Dentro da meta", "Abaixo da meta" )
+
+    // ---------- Tempo ----------
+    MEASURE fChamados[Tempo Médio Resolução (h)] = AVERAGE ( fChamados[tempo_resolucao_h] )
+
+    MEASURE fChamados[Tempo Mediano Resolução (h)] = MEDIAN ( fChamados[tempo_resolucao_h] )
+
+    // ---------- Qualidade ----------
+    MEASURE fChamados[Taxa de Reabertura %] =
+        DIVIDE (
+            CALCULATE ( [Chamados Fechados], fChamados[reaberto] = TRUE () ),
+            [Chamados Fechados]
+        )
+
+    MEASURE fChamados[Satisfação Média] = AVERAGE ( fChamados[nota_satisfacao] )
+
+    MEASURE fChamados[Taxa de Resposta Pesquisa %] =
+        DIVIDE ( COUNT ( fChamados[nota_satisfacao] ), [Chamados Fechados] )
+
+    // ---------- Ranking ----------
+    MEASURE fChamados[Ranking Categoria Fora do SLA] =
+        RANKX ( ALL ( dCategorias[categoria] ), [Chamados Fora do SLA],, DESC, DENSE )
+
+// Conferência: os números devem bater com o relatório gerado pelo Python
+EVALUATE
+ROW (
+    "Total Chamados", [Total Chamados],
+    "Chamados Abertos", [Chamados Abertos],
+    "% no SLA", [% no SLA],
+    "Tempo Médio (h)", [Tempo Médio Resolução (h)],
+    "Taxa de Reabertura %", [Taxa de Reabertura %],
+    "Satisfação Média", [Satisfação Média]
+)
